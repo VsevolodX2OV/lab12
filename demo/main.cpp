@@ -1,4 +1,4 @@
-//Copyright 2022 by Winter Solider
+//Copyright 2021 by Winter Solider
 
 #include <boost/program_options.hpp>
 #include <example.hpp>
