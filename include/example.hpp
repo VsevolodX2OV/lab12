@@ -1,24 +1,57 @@
-// Copyright 2021 Your Name <your_email>
+// Copyright by Enigma
 
 #ifndef INCLUDE_EXAMPLE_HPP_
 #define INCLUDE_EXAMPLE_HPP_
 
 #include <iostream>
+#include <algorithm>
+#include <set>
+#include <cstring>
+#include <sstream>
 #include <string>
 #include <fstream>
 #include <vector>
 #include <string_view>
 
-class Log {
+class Histogram{
  public:
-  void Write(std::string_view message) const;
-
-  void WriteDebug(std::string_view message) const;
-
-  explicit Log(size_t level);
+  static Histogram& GetInstance(){
+    static Histogram instance;
+    return instance;
+  }
+  [[nodiscard]] int Get_num() const {return num;}
+  [[nodiscard]] float Get_avg() const {return avg;}
+  void Set_svg(const float& avg_) {avg = avg_;}
+  void PlusNumSkip() {++num;}
+  void NewLap() {num = 0;}
 
  private:
-  size_t level_ = 0;
+  Histogram() = default;
+  Histogram( const Histogram&) = delete;
+  Histogram& operator=( Histogram& ) = delete;
+  int num = 0;
+  float avg = 0;
+};
+class Log {
+ public:
+  static Log& GetInstance() {
+    static Log instance;
+    return instance;
+  }
+  void Setting(bool level) {level_ = level;}
+  void Write(const std::string_view& message) const {
+    *out_ << "[info] " << message << std::endl;
+  }
+  void WriteDebug(const std::string_view& message) const {
+    if (level_) *out_ << "[debug] " << message << std::endl;
+  }
+
+ private:
+  Log(): level_(false), out_(&std::cout){}
+  Log( const Log&) = delete;
+  Log& operator=(Log& ) = delete;
+
+  bool level_ = false;
   mutable std::ostream* out_;
 };
 
@@ -27,53 +60,62 @@ struct Item {
   std::string name;
   float score = 0;
 };
-
 class UsedMemory {
  public:
-  explicit UsedMemory(const Log& log);
-
   void OnDataLoad(const std::vector<Item>& old_items,
                   const std::vector<Item>& new_items);
 
   void OnRawDataLoad(const std::vector<std::string>& old_items,
                      const std::vector<std::string>& new_items);
 
-  size_t used() const;
+  [[nodiscard]] size_t Used() const {return used_;}
 
  private:
-  const Log* log_;
   size_t used_ = 0;
 };
-
 class StatSender {
  public:
-  explicit StatSender(const Log& log);
   void OnLoaded(const std::vector<Item>& new_items);
-
   void Skip(const Item& item);
+  virtual ~StatSender() = default;
 
  private:
-  void AsyncSend(const std::vector<Item>& items, std::string_view path);
-
-  const Log* log_;
+  virtual void AsyncSend(const std::vector<Item>& items, std::string_view path);
   std::ofstream fstr{"network", std::ios::binary};
 };
+constexpr size_t kMinLines = 10;
 
 class PageContainer {
  public:
-  void Load(std::istream& io, float threshold);
-  const Item& ByIndex(size_t i) const;
+  void RawLoad(std::istream& file);
 
-  const Item& ById(const std::string& id) const;
+  [[nodiscard]] const Item& ByIndex(const size_t& i) const {
+    return data_[i];
+  }
 
-  void Reload(float threshold);
+  [[nodiscard]] const Item& ById(const std::string& id) const {
+    auto it = std::find_if(std::begin(data_), std::end(data_),
+                           [&id](const auto& i) { return id == i.id; });
+    return *it;
+  }
 
-  PageContainer(const Log& log, UsedMemory* memory_counter);
+  [[nodiscard]] size_t GetRawDataSize() const { return raw_data_.size();}
+  [[nodiscard]] size_t GetDataSize() const { return data_.size(); }
+  void DataLoad(const float& threshold);
+  static bool IsCorrect(std::string& line);
+  void PrintTable() const;
+  explicit PageContainer(UsedMemory* memory_counter = new UsedMemory(),
+                         StatSender* statistic_sender = new StatSender())
+      : memory_counter_(memory_counter), statistic_sender_(statistic_sender){}
+
+  ~PageContainer() {
+    delete memory_counter_;
+    delete statistic_sender_;
+  }
 
  private:
-  const Log* log_;
   UsedMemory* memory_counter_;
-  StatSender stat_sender_;
+  StatSender* statistic_sender_;
   std::vector<Item> data_;
   std::vector<std::string> raw_data_;
 };
